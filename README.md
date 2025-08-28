@@ -11,7 +11,7 @@ A lightweight, zero-dependency, and idiomatic job scheduler for Go.
 -   **Chainable API**: Configure jobs with a simple, readable syntax: `s.Schedule(task).Every(5*time.Second)`.
 -   **Scheduling Options**: Provides DST-aware schedules for intervals (`Every`), days of the week (`On`), and days of the month (`OnThe`). Supports one-off jobs via `In(duration)` or `At("15:04[:05]", ...)`.
 -   **Context-Aware**: The scheduler's lifecycle is managed by a `context.Context`, eliminating the need for a `Stop()` method. Job functions receive this context for graceful cancellation.
--   **Synchronous Execution**: Guarantees jobs do not overlap, preventing race conditions by design. (See *Synchronous Execution Model* below).
+-   **Synchronous Execution**: Guarantees jobs do not overlap, preventing race conditions by design.
 -   **Panic Recovery**: Recovers from panics within a job's execution, logs the error, and allows other jobs to continue running unaffected.
 -   **Job Timeouts**: Apply a per-job execution deadline using `.WithTimeout(duration)`.
 -   **Timezone Support**: Configure schedules to run in specific timezones via `WithLocation(loc)`.
@@ -83,10 +83,16 @@ These methods refine or modify a scheduled job.
 *   `.WithName(string)`: Assign a custom name for better logging.
 
 
-## Synchronous Execution Model
-The scheduler waits for a job to complete before planning its next run. If a job's execution overlaps with its next scheduled time, that missed run is skipped. This guarantees that only one instance of a job is ever active at a time.
+## Design Philosophy
 
+Sked's goal is a small, clear API for recurring tasks.
+This is achieved by a static design: all jobs are defined once at startup and cannot be added or changed at runtime. This trade-off keeps the API minimal and predictable.
 
+Sked also uses a synchronous execution model: jobs never overlap themselves. If a run takes longer than its interval, the next run is skipped rather than queued.
+
+It also handles common edge cases safely — time changes, missed runs after sleep, and panics in jobs.
+
+These choices make Sked simple to use and reliable for in-process scheduling. If you need dynamic job management or parallel execution, other packages are a better fit.
 
 ## Installation
 
