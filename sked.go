@@ -233,7 +233,7 @@ func (j *Job) On(days ...time.Weekday) *Job {
 	if len(days) == 0 {
 		panic("go-sched: On() requires at least one weekday")
 	}
-	weekdays := make(map[time.Weekday]bool)
+	var weekdays [7]bool
 	for _, day := range days {
 		weekdays[day] = true
 	}
@@ -492,8 +492,7 @@ func (s *DailySchedule) Next(t time.Time, loc *time.Location) (time.Time, bool) 
 // WeeklySchedule implements a DST-aware schedule for specific days of the week.
 type WeeklySchedule struct {
 	atTimes
-	Weekdays map[time.Weekday]bool
-	//Tod      time.Duration
+	Weekdays [7]bool
 }
 
 func (s *WeeklySchedule) Next(t time.Time, loc *time.Location) (time.Time, bool) {
