@@ -1,0 +1,7 @@
+*.test
+coverage.out
+go.work
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
