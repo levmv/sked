@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"runtime"
 	"runtime/debug"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 )
@@ -433,22 +433,20 @@ type atTimes struct {
 }
 
 func newAtTimes(tods []time.Duration) atTimes {
+	var todsCopy []time.Duration
+
 	if len(tods) == 0 {
 		// Default to midnight if no time is specified via At().
-		tods = []time.Duration{0}
+		todsCopy = []time.Duration{0}
+	} else {
+		todsCopy = make([]time.Duration, len(tods))
+		copy(todsCopy, tods)
 	}
 
-	sort.Slice(tods, func(i, j int) bool { return tods[i] < tods[j] })
-	// remove duplicates
-	uniqueTods := tods[:0]
-	var last time.Duration = -1
-	for _, tod := range tods {
-		if tod != last {
-			uniqueTods = append(uniqueTods, tod)
-			last = tod
-		}
-	}
-	return atTimes{tods: uniqueTods}
+	slices.Sort(todsCopy)
+	todsCopy = slices.Compact(todsCopy)
+
+	return atTimes{tods: todsCopy}
 }
 
 // findNextTime finds the first scheduled time that occurs on the same day as
