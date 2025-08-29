@@ -292,10 +292,9 @@ func (j *Job) In(d time.Duration) *Job {
 	return j
 }
 
-// At sets the time of day ("15:04" or "15:04:05").
-// If called before choosing a recurring schedule, it creates a one-off job
-// at the next occurrence of that time. When used with Daily/On/OnThe,
-// it sets the time-of-day component for that schedule.
+// At sets the time of day for a job to run, specified in "15:04" or
+// "15:04:05" format. It is used to refine calendar-based schedules like
+// Daily(), On(), and OnThe().
 func (j *Job) At(times ...string) *Job {
 	if len(times) == 0 {
 		j.err = errors.New("At() requires at least one time string")
