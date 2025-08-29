@@ -106,15 +106,6 @@ func (sh *Scheduler) Run() error {
 }
 
 func (sh *Scheduler) jobWorker(j *Job) {
-	if j.name == "" {
-		j.name = getFuncName(j.fn)
-	}
-
-	if j.schedule == nil {
-		sh.logger.Debug("skipping job with no schedule", "name", j.name)
-		return
-	}
-
 	next, hasNext := sh.planNextRun(j, time.Now().In(sh.location))
 
 	if next.IsZero() {
