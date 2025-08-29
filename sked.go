@@ -509,6 +509,8 @@ type DailySchedule struct {
 }
 
 func (s *DailySchedule) Next(t time.Time, loc *time.Location) (time.Time, bool) {
+	t = t.In(loc)
+
 	if next := s.findNextOnDay(t); !next.IsZero() {
 		return next, true
 	}
