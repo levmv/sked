@@ -4,6 +4,8 @@ package sked
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"reflect"
 	"runtime"
 	"runtime/debug"
@@ -58,13 +60,13 @@ func WithLogger(logger SlogLogger) Option {
 // Panics if j is nil or if the scheduler has already started.
 func (sh *Scheduler) Schedule(j func(context.Context)) *Job {
 	if j == nil {
-		panic("go-sched: cannot schedule a nil function")
+		panic("sked: cannot schedule a nil function")
 	}
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
 	if sh.started {
-		panic("go-sched: cannot schedule new jobs after scheduler has started")
+		panic("sked: cannot schedule new jobs after scheduler has started")
 	}
 
 	job := &Job{fn: j}
@@ -75,20 +77,36 @@ func (sh *Scheduler) Schedule(j func(context.Context)) *Job {
 // Run starts a background worker goroutine for each scheduled job and returns
 // immediately. Jobs continue running until the Scheduler's context (passed to
 // New) is canceled.
-func (sh *Scheduler) Run() {
+func (sh *Scheduler) Run() error {
 	sh.mu.Lock()
-	if sh.started || sh.ctx.Err() != nil {
-		sh.mu.Unlock()
-		return
+	defer sh.mu.Unlock()
+
+	if sh.started {
+		return errors.New("scheduler already started")
 	}
+	if sh.ctx.Err() != nil {
+		return fmt.Errorf("scheduler context error: %w", sh.ctx.Err())
+	}
+
+	for _, j := range sh.Jobs {
+		if j.err != nil {
+			jobName := j.name
+			if jobName == "" {
+				jobName = getFuncName(j.fn)
+			}
+			return fmt.Errorf("job %q configuration error: %w", jobName, j.err)
+		}
+	}
+
 	sh.started = true
 
 	jobsToStart := make([]*Job, len(sh.Jobs))
 	copy(jobsToStart, sh.Jobs)
-	sh.mu.Unlock()
+
 	for _, j := range jobsToStart {
 		go sh.jobWorker(j)
 	}
+	return nil
 }
 
 func (sh *Scheduler) jobWorker(j *Job) {
@@ -113,8 +131,8 @@ func (sh *Scheduler) jobWorker(j *Job) {
 
 	for {
 		select {
-		case runAt := <-t.C:
-			if !j.shouldSkip(runAt) {
+		case <-t.C:
+			if !j.shouldSkip(next) {
 				doJob(sh.ctx, sh.logger, j)
 			}
 
@@ -197,6 +215,7 @@ type Job struct {
 	tods     []time.Duration
 	except   []func(time.Time) bool
 	timeout  time.Duration
+	err      error
 }
 
 // Every schedules a job to run at regular intervals. Intervals are aligned
@@ -205,7 +224,8 @@ type Job struct {
 // of when the scheduler was started. Use AtOffset() to shift this alignment.
 func (j *Job) Every(d time.Duration) *Job {
 	if d <= 0 {
-		panic("go-sched: Every() interval must be a positive duration")
+		j.err = errors.New("Every() interval must be a positive duration")
+		return j
 	}
 	j.setSchedule(&IntervalSchedule{Interval: d})
 	return j
@@ -218,7 +238,8 @@ func (j *Job) Daily() *Job { return j.EveryNDays(1) }
 // of day; midnight is used if At is not specified.
 func (j *Job) EveryNDays(n int) *Job {
 	if n <= 0 {
-		panic("go-sched: EveryNDays() n must be positive")
+		j.err = errors.New("EveryNDays() n must be positive")
+		return j
 	}
 	j.setSchedule(&DailySchedule{
 		atTimes: newAtTimes(j.tods),
@@ -231,7 +252,8 @@ func (j *Job) EveryNDays(n int) *Job {
 // Combine with At to set the time of day.
 func (j *Job) On(days ...time.Weekday) *Job {
 	if len(days) == 0 {
-		panic("go-sched: On() requires at least one weekday")
+		j.err = errors.New("On() requires at least one weekday")
+		return j
 	}
 	var weekdays [7]bool
 	for _, day := range days {
@@ -248,7 +270,8 @@ func (j *Job) On(days ...time.Weekday) *Job {
 // Combine with At to set the time of day.
 func (j *Job) OnThe(day int) *Job {
 	if (day < 1 || day > 31) && day != -1 {
-		panic("go-sched: OnThe() day is invalid")
+		j.err = errors.New("OnThe() day is invalid")
+		return j
 	}
 	j.setSchedule(&MonthlySchedule{
 		atTimes:    newAtTimes(j.tods),
@@ -260,7 +283,8 @@ func (j *Job) OnThe(day int) *Job {
 // In schedules a one-off job to run after the given delay.
 func (j *Job) In(d time.Duration) *Job {
 	if d < 0 {
-		panic("go-sched: In() duration cannot be negative")
+		j.err = errors.New("In() duration cannot be negative")
+		return j
 	}
 	j.setSchedule(&RelativeTimeSchedule{
 		Duration: d,
@@ -274,14 +298,16 @@ func (j *Job) In(d time.Duration) *Job {
 // it sets the time-of-day component for that schedule.
 func (j *Job) At(times ...string) *Job {
 	if len(times) == 0 {
-		panic("go-sched: At() requires at least one time string")
+		j.err = errors.New("At() requires at least one time string")
+		return j
 	}
 	for _, timeStr := range times {
 		var t time.Time
 		var err error
 		if t, err = time.Parse("15:04:05", timeStr); err != nil {
 			if t, err = time.Parse("15:04", timeStr); err != nil {
-				panic("go-sched: invalid time string for At(): " + err.Error())
+				j.err = fmt.Errorf("invalid time string for At(): %w", err)
+				return j
 			}
 		}
 		tod := time.Duration(t.Hour())*time.Hour +
@@ -303,7 +329,7 @@ func (j *Job) At(times ...string) *Job {
 	case *MonthlySchedule:
 		s.atTimes = newAtTimes(j.tods)
 	default:
-		panic("go-sched: At() can only be used with calendar-based schedules (Daily, On, OnThe)")
+		j.err = errors.New("At() can only be used with calendar-based schedules (Daily, On, OnThe)")
 	}
 	return j
 }
@@ -311,13 +337,14 @@ func (j *Job) At(times ...string) *Job {
 // AtOffset shifts the alignment of an Every(...) interval by the given
 // duration (e.g., 1h to run at whole hours). Only valid with Every(...).
 func (j *Job) AtOffset(d time.Duration) *Job {
-	if d < 0 {
-		panic("go-sched: AtOffset() duration cannot be negative")
+	if d < 0 || d >= 24*time.Hour {
+		j.err = errors.New("AtOffset() must be in [0, 24h)")
+		return j
 	}
 	if s, ok := j.schedule.(*IntervalSchedule); ok && s != nil {
 		s.Offset = d
 	} else {
-		panic("go-sched: AtOffset() can only be used with an Every() schedule")
+		j.err = errors.New("AtOffset() can only be used with an Every() schedule")
 	}
 	return j
 }
@@ -328,7 +355,8 @@ func (j *Job) AtOffset(d time.Duration) *Job {
 // execution exceeds d; your job function should observe ctx.Done().
 func (j *Job) WithTimeout(d time.Duration) *Job {
 	if d <= 0 {
-		panic("go-sched: WithTimeout() duration must be positive")
+		j.err = errors.New("WithTimeout() duration must be positive")
+		return j
 	}
 	j.timeout = d
 	return j
@@ -346,7 +374,8 @@ func (j *Job) Except(f func(time.Time) bool) *Job {
 // Hours are integers 0..23; a zero-length window (from == to) skips all runs.
 func (j *Job) Between(from, to int) *Job {
 	if from < 0 || from > 23 || to < 0 || to > 23 {
-		panic("go-sched: hours for Between() must be between 0 and 23")
+		j.err = errors.New("hours for Between() must be between 0 and 23")
+		return j
 	}
 
 	// This filter uses the [from, to) interval convention, meaning it includes
@@ -378,7 +407,7 @@ func (j *Job) WithName(name string) *Job {
 
 func (j *Job) setSchedule(s Schedule) {
 	if j.schedule != nil {
-		panic("go-sched: a scheduler type (like Every, Daily, or On) has already been set")
+		panic("sked: a scheduler type (like Every, Daily, or On) has already been set")
 	}
 	j.schedule = s
 }
