@@ -1,0 +1,40 @@
+name: build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:  
+  test:
+    strategy:
+        matrix:
+          go-version: [ '1.22.x', 'stable' ]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }} 
+          cache: true
+
+      - name: Check code formatting
+        run: |
+          # Fails if gofumpt finds any files that need formatting.
+          if [ -n "$(gofumpt -l .)" ]; then
+            echo "Go code is not formatted:"
+            gofumpt -l .
+            exit 1
+          fi
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -v -race ./...
