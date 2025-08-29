@@ -1,5 +1,6 @@
 # sked
 
+[![Build Status](https://github.com/levmv/sked/actions/workflows/go.yml/badge.svg)](https://github.com/levmv/sked/actions/workflows/go.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/levmv/sked.svg)](https://pkg.go.dev/github.com/levmv/sked)
 [![Go Report Card](https://goreportcard.com/badge/github.com/levmv/sked)](https://goreportcard.com/report/github.com/levmv/sked)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
