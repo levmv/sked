@@ -89,12 +89,8 @@ func (sh *Scheduler) Run() error {
 	}
 
 	for _, j := range sh.Jobs {
-		if j.err != nil {
-			jobName := j.name
-			if jobName == "" {
-				jobName = getFuncName(j.fn)
-			}
-			return fmt.Errorf("job %q configuration error: %w", jobName, j.err)
+		if err := j.prepare(); err != nil {
+			return err
 		}
 	}
 
@@ -409,6 +405,23 @@ func (j *Job) setSchedule(s Schedule) {
 		panic("sked: a scheduler type (like Every, Daily, or On) has already been set")
 	}
 	j.schedule = s
+}
+
+// prepare finalizes the job's configuration and validates it.
+// This should be called once before the scheduler starts.
+func (j *Job) prepare() error {
+	if j.name == "" {
+		j.name = getFuncName(j.fn)
+	}
+
+	if j.err != nil {
+		return fmt.Errorf("job %q configuration error: %w", j.name, j.err)
+	}
+	if j.schedule == nil {
+		return fmt.Errorf("job %q has no schedule (call Every/Daily/On/OnThe/In)", j.name)
+	}
+
+	return nil
 }
 
 func (j *Job) shouldSkip(t time.Time) bool {
