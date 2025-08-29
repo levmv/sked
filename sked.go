@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -48,12 +49,20 @@ func New(ctx context.Context, opts ...Option) *Scheduler {
 // WithLocation sets the time.Location the scheduler uses for all calendar
 // calculations (midnight alignment, At/Between, DST handling).
 func WithLocation(loc *time.Location) Option {
-	return func(s *Scheduler) { s.location = loc }
+	return func(s *Scheduler) {
+		if loc != nil {
+			s.location = loc
+		}
+	}
 }
 
 // WithLogger installs a slog-compatible logger used for debug/error messages.
 func WithLogger(logger SlogLogger) Option {
-	return func(s *Scheduler) { s.logger = logger }
+	return func(s *Scheduler) {
+		if logger != nil {
+			s.logger = logger
+		}
+	}
 }
 
 // Schedule registers a new job and returns a builder to configure its schedule.
@@ -160,7 +169,7 @@ func (sh *Scheduler) planNextRun(j *Job, lastRun time.Time) (time.Time, bool) {
 	}
 
 	now := time.Now().In(sh.location)
-	if !next.After(now) {
+	if next.Before(now) {
 		next, hasNext = j.schedule.Next(now, sh.location)
 		if next.IsZero() || !hasNext || !next.After(now) {
 			sh.logger.Error("no future run found", "name", j.name)
@@ -288,11 +297,14 @@ func (j *Job) At(times ...string) *Job {
 		return j
 	}
 	for _, timeStr := range times {
+		timeStr = strings.TrimSpace(timeStr)
+
 		var t time.Time
 		var err error
+
 		if t, err = time.Parse("15:04:05", timeStr); err != nil {
 			if t, err = time.Parse("15:04", timeStr); err != nil {
-				j.err = fmt.Errorf("invalid time string for At(): %w", err)
+				j.err = fmt.Errorf("invalid time string in At(): %w", err)
 				return j
 			}
 		}
@@ -448,7 +460,8 @@ type IntervalSchedule struct {
 }
 
 func (s *IntervalSchedule) Next(t time.Time, loc *time.Location) (time.Time, bool) {
-	year, month, day := t.In(loc).Date()
+	t = t.In(loc)
+	year, month, day := t.Date()
 	midnight := time.Date(year, month, day, 0, 0, 0, 0, loc)
 	base := midnight.Add(s.Offset)
 	if base.After(t) {
@@ -548,7 +561,7 @@ func (s *WeeklySchedule) Next(t time.Time, loc *time.Location) (time.Time, bool)
 		}
 	}
 
-	return time.Time{}, true
+	return time.Time{}, false
 }
 
 // MonthlySchedule implements a DST-aware schedule for a specific day of the month.

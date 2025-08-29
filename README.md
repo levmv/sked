@@ -11,7 +11,6 @@ A lightweight, zero-dependency, and idiomatic job scheduler for Go.
 -   **Chainable API**: Configure jobs with a simple, readable syntax: `s.Schedule(task).Every(5*time.Second)`.
 -   **Scheduling Options**: Provides DST-aware schedules for intervals (`Every`), days of the week (`On`), and days of the month (`OnThe`). Supports one-off jobs via `In(duration)` or `At("15:04[:05]", ...)`.
 -   **Context-Aware**: The scheduler's lifecycle is managed by a `context.Context`, eliminating the need for a `Stop()` method. Job functions receive this context for graceful cancellation.
--   **Synchronous Execution**: Guarantees jobs do not overlap, preventing race conditions by design.
 -   **Panic Recovery**: Recovers from panics within a job's execution, logs the error, and allows other jobs to continue running unaffected.
 -   **Job Timeouts**: Apply a per-job execution deadline using `.WithTimeout(duration)`.
 -   **Timezone Support**: Configure schedules to run in specific timezones via `WithLocation(loc)`.
