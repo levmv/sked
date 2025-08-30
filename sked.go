@@ -18,7 +18,7 @@ import (
 // Scheduler manages jobs and runs each on its own background worker.
 // Create it with New(ctx). Start it with Run().
 type Scheduler struct {
-	Jobs []*Job
+	jobs []*Job
 
 	ctx      context.Context
 	location *time.Location
@@ -79,7 +79,7 @@ func (sh *Scheduler) Schedule(j func(context.Context)) *Job {
 	}
 
 	job := &Job{fn: j}
-	sh.Jobs = append(sh.Jobs, job)
+	sh.jobs = append(sh.jobs, job)
 	return job
 }
 
@@ -97,7 +97,7 @@ func (sh *Scheduler) Run() error {
 		return fmt.Errorf("scheduler context error: %w", sh.ctx.Err())
 	}
 
-	for _, j := range sh.Jobs {
+	for _, j := range sh.jobs {
 		if err := j.prepare(); err != nil {
 			return err
 		}
@@ -105,10 +105,7 @@ func (sh *Scheduler) Run() error {
 
 	sh.started = true
 
-	jobsToStart := make([]*Job, len(sh.Jobs))
-	copy(jobsToStart, sh.Jobs)
-
-	for _, j := range jobsToStart {
+	for _, j := range sh.jobs {
 		go sh.jobWorker(j)
 	}
 	return nil
@@ -188,7 +185,7 @@ func (sh *Scheduler) planNextRun(j *Job, lastRun time.Time) (time.Time, bool) {
 		}
 	}
 
-	return next, true
+	return next, hasNext
 }
 
 // doJob executes a single run of a job's function.
@@ -542,7 +539,7 @@ func (s *DailySchedule) Next(t time.Time, loc *time.Location) (time.Time, bool) 
 	if next := s.findNextOnDay(t); !next.IsZero() {
 		return next, true
 	}
-	year, month, day := t.In(loc).Date()
+	year, month, day := t.Date()
 	nextRunDayBase := time.Date(year, month, day, 0, 0, 0, 0, loc).AddDate(0, 0, s.N)
 	return s.findNextTime(nextRunDayBase, t), true
 }
@@ -608,7 +605,7 @@ func (s *MonthlySchedule) Next(t time.Time, loc *time.Location) (time.Time, bool
 		}
 	}
 	nextMonthBase := time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, loc)
-	for {
+	for i := 0; i < 10000; i++ {
 		targetNextMonth := getTargetDateInMonth(nextMonthBase.Year(), nextMonthBase.Month())
 
 		if !targetNextMonth.IsZero() {
@@ -617,6 +614,7 @@ func (s *MonthlySchedule) Next(t time.Time, loc *time.Location) (time.Time, bool
 		}
 		nextMonthBase = nextMonthBase.AddDate(0, 1, 0)
 	}
+	return time.Time{}, false
 }
 
 // SlogLogger is a minimal logging interface used by the scheduler.
