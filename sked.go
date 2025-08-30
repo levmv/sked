@@ -114,6 +114,12 @@ func (sh *Scheduler) Run() error {
 	return nil
 }
 
+// staleThreshold defines the maximum acceptable delay for a timer firing.
+// If the actual delay is larger than this, we assume a significant event
+// occurred (like system sleep) and that the original scheduled context for
+// the job is no longer valid.
+const staleThreshold = time.Second
+
 func (sh *Scheduler) jobWorker(j *Job) {
 	next, hasNext := sh.planNextRun(j, time.Now().In(sh.location))
 
@@ -128,10 +134,15 @@ func (sh *Scheduler) jobWorker(j *Job) {
 	for {
 		select {
 		case <-t.C:
-			if !j.shouldSkip(next) {
+			if time.Since(next) < staleThreshold && !j.shouldSkip(next) {
 				doJob(sh.ctx, sh.logger, j)
+			} else {
+				sh.logger.Debug("stale timer fired; job execution skipped",
+					"name", j.name,
+					"scheduled_for", next,
+					"woke_at", time.Now().In(sh.location),
+				)
 			}
-
 			if !hasNext {
 				sh.logger.Debug("one-off job finished", "name", j.name)
 				return
