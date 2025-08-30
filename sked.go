@@ -83,9 +83,10 @@ func (sh *Scheduler) Schedule(j func(context.Context)) *Job {
 	return job
 }
 
-// Run starts a background worker goroutine for each scheduled job and returns
-// immediately. Jobs continue running until the Scheduler's context (passed to
-// New) is canceled.
+// Run validates all scheduled jobs and starts their background workers.
+// It returns immediately on success. However, if any job is misconfigured,
+// Run will return an error and no jobs will be started.
+// After a successful start, the scheduler runs until the context is canceled.
 func (sh *Scheduler) Run() error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
@@ -222,10 +223,10 @@ type Job struct {
 	err      error
 }
 
-// Every schedules a job to run at regular intervals. Intervals are aligned
-// to local midnight; For example, a job scheduled with
-// Every(30 * time.Minute) will run at 00:00, 00:30, 01:00, etc., regardless
-// of when the scheduler was started. Use AtOffset() to shift this alignment.
+// Every schedules a job to run at regular intervals. Intervals are aligned to
+// midnight in the scheduler's location (see WithLocation); for example, a job
+// with Every(30 * time.Minute) will run at 00:00, 00:30, 01:00, etc.,
+// regardless of when the scheduler was started. Use AtOffset() to shift this alignment.
 func (j *Job) Every(d time.Duration) *Job {
 	if d <= 0 {
 		j.err = errors.New("Every() interval must be a positive duration")
@@ -275,7 +276,8 @@ func (j *Job) On(days ...time.Weekday) *Job {
 }
 
 // OnThe sets a monthly schedule by day of month. Use -1 for the last day.
-// Combine with At to set the time of day.
+// If a day does not exist in a given month (e.g., 31 in April), the job
+// will not run in that month. Combine with At to set the time of day.
 func (j *Job) OnThe(day int) *Job {
 	if (day < 1 || day > 31) && day != -1 {
 		j.err = errors.New("OnThe() day is invalid")
@@ -288,7 +290,8 @@ func (j *Job) OnThe(day int) *Job {
 	return j
 }
 
-// In schedules a one-off job to run after the given delay.
+// In schedules a one-off job to run once after the given delay. The delay is
+// relative to when the scheduler is started via the Run() method.
 func (j *Job) In(d time.Duration) *Job {
 	if d < 0 {
 		j.err = errors.New("In() duration cannot be negative")
