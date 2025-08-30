@@ -261,6 +261,10 @@ func (j *Job) On(days ...time.Weekday) *Job {
 	}
 	var weekdays [7]bool
 	for _, day := range days {
+		if day < time.Sunday || day > time.Saturday {
+			j.err = errors.New("On() received an invalid weekday")
+			return j
+		}
 		weekdays[day] = true
 	}
 	j.setSchedule(&WeeklySchedule{
