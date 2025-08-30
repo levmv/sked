@@ -18,11 +18,16 @@ import (
 // approach, but they still serve as a useful high-level check that the
 // scheduler's core timing loop behaves correctly.
 
-func TestScheduler_Every_RealTime(t *testing.T) {
+func newTestScheduler(t *testing.T) (*Scheduler, context.CancelFunc) {
+	t.Helper() // ← Great suggestion!
 	ctx, cancel := context.WithCancel(context.Background())
+	return New(ctx), cancel
+}
+
+func TestScheduler_Every_RealTime(t *testing.T) {
+	scheduler, cancel := newTestScheduler(t)
 	defer cancel()
 
-	scheduler := New(ctx)
 	var runCount int32
 
 	scheduler.Schedule(func(ctx context.Context) {
@@ -32,8 +37,6 @@ func TestScheduler_Every_RealTime(t *testing.T) {
 	go scheduler.Run()
 
 	time.Sleep(105 * time.Millisecond)
-	cancel()
-	time.Sleep(10 * time.Millisecond)
 
 	finalRunCount := atomic.LoadInt32(&runCount)
 	if finalRunCount < 4 || finalRunCount > 6 {
@@ -46,10 +49,9 @@ func TestScheduler_Every_RealTime(t *testing.T) {
 func TestScheduler_Daily_MultipleTimes_At(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	scheduler, cancel := newTestScheduler(t)
 	defer cancel()
 
-	scheduler := New(ctx)
 	runCount := make(chan time.Time, 2)
 
 	now := time.Now().Truncate(time.Second)
@@ -88,10 +90,9 @@ func TestScheduler_Daily_MultipleTimes_At(t *testing.T) {
 func TestScheduler_Daily_FlexibleOrder_AtDaily(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	scheduler, cancel := newTestScheduler(t)
 	defer cancel()
 
-	scheduler := New(ctx)
 	runSignal := make(chan struct{}, 1)
 
 	runTime := time.Now().Add(1 * time.Second)
@@ -112,7 +113,9 @@ func TestScheduler_Daily_FlexibleOrder_AtDaily(t *testing.T) {
 // TestScheduler_Daily_DefaultTimeIsMidnight verifies that Daily() without At()
 // schedules the job for midnight.
 func TestScheduler_Daily_DefaultTimeIsMidnight(t *testing.T) {
-	scheduler := New(context.Background())
+	scheduler, cancel := newTestScheduler(t)
+	defer cancel()
+
 	job := scheduler.Schedule(func(ctx context.Context) {}).Daily()
 
 	if job.schedule == nil {
@@ -145,7 +148,9 @@ func TestScheduler_Daily_DefaultTimeIsMidnight(t *testing.T) {
 func TestScheduler_OneOff_InZero_RunsImmediately(t *testing.T) {
 	t.Parallel()
 
-	scheduler := New(context.Background())
+	scheduler, cancel := newTestScheduler(t)
+	defer cancel()
+
 	runSignal := make(chan struct{}, 1)
 
 	scheduler.Schedule(func(ctx context.Context) {
@@ -164,10 +169,8 @@ func TestScheduler_OneOff_InZero_RunsImmediately(t *testing.T) {
 // TestScheduler_LongRunningJob_DoesNotOverlap verifies that the synchronous scheduler
 // waits for a long-running job to complete before scheduling the next one.
 func TestScheduler_LongRunningJob_DoesNotOverlap(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	scheduler, cancel := newTestScheduler(t)
 	defer cancel()
-
-	scheduler := New(ctx)
 
 	var mu sync.Mutex
 	var runTimes []time.Time
@@ -185,8 +188,6 @@ func TestScheduler_LongRunningJob_DoesNotOverlap(t *testing.T) {
 	go scheduler.Run()
 	// Allow enough time for 3 runs to complete (0ms, 60ms, 120ms)
 	time.Sleep(150 * time.Millisecond)
-	cancel()
-	time.Sleep(10 * time.Millisecond) // Allow for cleanup
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -205,8 +206,7 @@ func TestScheduler_LongRunningJob_DoesNotOverlap(t *testing.T) {
 }
 
 func TestScheduler_ContextCancellation_StopsJobs(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	scheduler := New(ctx)
+	scheduler, cancel := newTestScheduler(t)
 	var runCount int32
 
 	// Schedule a job that runs very frequently.
@@ -239,7 +239,9 @@ func TestScheduler_ContextCancellation_StopsJobs(t *testing.T) {
 // --- One-Off Job Tests ---
 
 func TestScheduler_OneOff_In_RealTime(t *testing.T) {
-	scheduler := New(context.Background())
+	scheduler, cancel := newTestScheduler(t)
+	defer cancel()
+
 	runSignal := make(chan struct{}, 1)
 
 	scheduler.Schedule(func(ctx context.Context) {
@@ -266,9 +268,9 @@ func TestScheduler_OneOff_In_RealTime(t *testing.T) {
 func TestScheduler_Filter_Except(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	scheduler, cancel := newTestScheduler(t)
 	defer cancel()
-	scheduler := New(ctx)
+
 	var mu sync.Mutex
 	var runs []int
 	var runCounter int
@@ -288,7 +290,6 @@ func TestScheduler_Filter_Except(t *testing.T) {
 
 	go scheduler.Run()
 	time.Sleep(105 * time.Millisecond) // Should allow for 5 checks.
-	cancel()
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -301,8 +302,9 @@ func TestScheduler_Filter_Except(t *testing.T) {
 
 func TestScheduler_Filter_Between(t *testing.T) {
 	t.Parallel()
+	scheduler, cancel := newTestScheduler(t)
+	defer cancel()
 
-	scheduler := New(context.Background())
 	runSignal := make(chan struct{}, 1)
 
 	currentHour := time.Now().Hour()
@@ -323,7 +325,9 @@ func TestScheduler_Filter_Between(t *testing.T) {
 	}
 
 	// Test the inverse: a window that excludes the current hour.
-	scheduler2 := New(context.Background())
+	scheduler2, cancel2 := newTestScheduler(t)
+	defer cancel2()
+
 	runSignal2 := make(chan struct{}, 1)
 
 	fromHour = (currentHour + 2) % 24
@@ -339,5 +343,161 @@ func TestScheduler_Filter_Between(t *testing.T) {
 	case <-runSignal2:
 		t.Error("job ran even though current hour is outside the Between() window")
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestScheduler_InvalidConfigurations_Panics(t *testing.T) {
+	t.Run("nil function", func(t *testing.T) {
+		scheduler := New(context.Background())
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic for nil function")
+			}
+		}()
+		scheduler.Schedule(nil)
+	})
+
+	t.Run("schedule after run", func(t *testing.T) {
+		scheduler := New(context.Background())
+		scheduler.Schedule(func(ctx context.Context) {}).Every(time.Hour)
+		scheduler.Run()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic when scheduling after Run()")
+			}
+		}()
+		scheduler.Schedule(func(ctx context.Context) {}).Every(time.Hour)
+	})
+}
+
+func TestScheduler_InvalidConfigurations_Errors(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(*Scheduler)
+		expectError bool
+	}{
+		{
+			name: "invalid duration",
+			setup: func(s *Scheduler) {
+				s.Schedule(func(ctx context.Context) {}).Every(-1 * time.Hour)
+			},
+			expectError: true,
+		},
+		{
+			name: "invalid time format",
+			setup: func(s *Scheduler) {
+				s.Schedule(func(ctx context.Context) {}).Daily().At("25:00")
+			},
+			expectError: true,
+		},
+		{
+			name: "invalid timeout",
+			setup: func(s *Scheduler) {
+				s.Schedule(func(ctx context.Context) {}).Every(time.Hour).WithTimeout(-1 * time.Hour)
+			},
+			expectError: true,
+		},
+		{
+			name: "invalid day of month",
+			setup: func(s *Scheduler) {
+				s.Schedule(func(ctx context.Context) {}).OnThe(32)
+			},
+			expectError: true,
+		},
+		{
+			name: "no schedule configured",
+			setup: func(s *Scheduler) {
+				s.Schedule(func(ctx context.Context) {})
+			},
+			expectError: true,
+		},
+		{
+			name: "valid configuration",
+			setup: func(s *Scheduler) {
+				s.Schedule(func(ctx context.Context) {}).Every(time.Hour)
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheduler, cancel := newTestScheduler(t)
+			defer cancel()
+
+			tt.setup(scheduler)
+
+			err := scheduler.Run()
+			if tt.expectError && err == nil {
+				t.Errorf("expected error for %s, got nil", tt.name)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("unexpected error for %s: %v", tt.name, err)
+			}
+		})
+	}
+}
+
+// TestScheduler_PanicRecovery verifies that if a job function panics, the
+// scheduler recovers from it and continues to run other scheduled jobs.
+func TestScheduler_PanicRecovery(t *testing.T) {
+	t.Parallel()
+	scheduler, cancel := newTestScheduler(t)
+	defer cancel()
+
+	survivorJobRan := make(chan struct{})
+
+	panickingJob := func(ctx context.Context) {
+		panic("a deliberate panic for testing recovery")
+	}
+
+	survivorJob := func(ctx context.Context) {
+		close(survivorJobRan)
+	}
+
+	scheduler.Schedule(panickingJob).In(10 * time.Millisecond)
+	scheduler.Schedule(survivorJob).In(50 * time.Millisecond)
+
+	go scheduler.Run()
+
+	select {
+	case <-survivorJobRan:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("timed out waiting for survivor job to run; the scheduler likely crashed")
+	}
+}
+
+// TestScheduler_RecurringJob_RecoversFromPanic verifies that if a recurring
+// job panics, it is still scheduled for its subsequent runs.
+func TestScheduler_RecurringJob_RecoversFromPanic(t *testing.T) {
+	t.Parallel()
+
+	scheduler, cancel := newTestScheduler(t)
+	defer cancel()
+
+	var runCount atomic.Int32
+	secondRunSucceeded := make(chan struct{})
+
+	job := func(ctx context.Context) {
+		count := runCount.Add(1)
+
+		if count == 1 {
+			panic("deliberate panic on first run")
+		}
+
+		if count == 2 {
+			close(secondRunSucceeded)
+		}
+	}
+
+	scheduler.Schedule(job).Every(20 * time.Millisecond)
+
+	go scheduler.Run()
+
+	select {
+	case <-secondRunSucceeded:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("timed out waiting for the second run; the job was not rescheduled after panicking")
 	}
 }

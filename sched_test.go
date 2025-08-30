@@ -1,6 +1,7 @@
 package sked
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -68,6 +69,57 @@ func TestMonthlySchedule_Next_EdgeCases(t *testing.T) {
 			next, ok := tc.schedule.Next(tc.after, loc)
 			if !ok || !next.Equal(tc.expected) {
 				t.Errorf("mismatch:\n got: %v\nwant: %v", next, tc.expected)
+			}
+		})
+	}
+}
+
+func TestScheduler_At_TimeParsing(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		times       []string
+		expectError bool
+	}{
+		// --- Valid Cases ---
+		{name: "HH:MM", times: []string{"9:30"}, expectError: false},
+		{name: "Zero-padded HH:MM", times: []string{"09:30"}, expectError: false},
+		{name: "HH:MM:SS", times: []string{"9:30:00"}, expectError: false},
+		{name: "With seconds", times: []string{"09:30:45"}, expectError: false},
+		{name: "Midnight", times: []string{"0:00"}, expectError: false},
+		{name: "End of day", times: []string{"23:59"}, expectError: false},
+		{name: "End of day with seconds", times: []string{"23:59:59"}, expectError: false},
+		{name: "Multiple valid times", times: []string{"09:00", "12:30", "18:45"}, expectError: false},
+		{name: "Duplicate valid times", times: []string{"09:00", "09:00", "12:30"}, expectError: false},
+
+		// --- Invalid Cases ---
+		{name: "Invalid hour", times: []string{"25:00"}, expectError: true},
+		{name: "Invalid minute", times: []string{"9:60"}, expectError: true},
+		{name: "Invalid second", times: []string{"9:30:60"}, expectError: true},
+		{name: "Too many components", times: []string{"9:30:45:67"}, expectError: true},
+		{name: "Non-numeric", times: []string{"abc"}, expectError: true},
+		{name: "Empty string", times: []string{""}, expectError: true},
+		{name: "Missing minutes", times: []string{"9"}, expectError: true},
+		{name: "Trailing colon", times: []string{"9:"}, expectError: true},
+		{name: "Missing hour", times: []string{":30"}, expectError: true},
+		{name: "One invalid among many valid", times: []string{"09:00", "bogus", "18:45"}, expectError: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			scheduler, cancel := newTestScheduler(t)
+			defer cancel()
+
+			job := scheduler.Schedule(func(ctx context.Context) {}).Daily().At(tc.times...)
+
+			err := job.err
+
+			if tc.expectError && err == nil {
+				t.Error("expected a configuration error, but got nil")
+			}
+			if !tc.expectError && err != nil {
+				t.Errorf("did not expect a configuration error, but got: %v", err)
 			}
 		})
 	}
