@@ -19,7 +19,7 @@ import (
 // scheduler's core timing loop behaves correctly.
 
 func newTestScheduler(t *testing.T) (*Scheduler, context.CancelFunc) {
-	t.Helper() // ← Great suggestion!
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	return New(ctx), cancel
 }
