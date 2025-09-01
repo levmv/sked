@@ -348,7 +348,9 @@ func (j *Job) At(times ...string) *Job {
 }
 
 // AtOffset shifts the alignment of an Every(...) interval by the given
-// duration (e.g., 1h to run at whole hours). Only valid with Every(...).
+// duration Useful for staggering frequent jobs to avoid them all running
+// simultaneously (e.g., multiple jobs every hour, with different offsets).
+// Only valid with Every(...).
 func (j *Job) AtOffset(d time.Duration) *Job {
 	if d < 0 || d >= 24*time.Hour {
 		j.err = errors.New("AtOffset() must be in [0, 24h)")
