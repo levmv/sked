@@ -334,14 +334,9 @@ func (j *Job) At(times ...string) *Job {
 		return j
 	}
 
-	switch s := j.schedule.(type) {
-	case *DailySchedule:
-		s.atTimes = newAtTimes(j.tods)
-	case *WeeklySchedule:
-		s.atTimes = newAtTimes(j.tods)
-	case *MonthlySchedule:
-		s.atTimes = newAtTimes(j.tods)
-	default:
+	if s, ok := j.schedule.(atTimesInterface); ok {
+		s.setAtTimes(j.tods)
+	} else {
 		j.err = errors.New("At() can only be used with calendar-based schedules (Daily, On, OnThe)")
 	}
 	return j
@@ -489,9 +484,17 @@ func (s *IntervalSchedule) Next(t time.Time, loc *time.Location) (time.Time, boo
 	return base.Add((intervalsPassed + 1) * s.Interval), true
 }
 
+type atTimesInterface interface {
+	setAtTimes(tods []time.Duration)
+}
+
 // atTimes handles the "time of day" logic.
 type atTimes struct {
 	tods []time.Duration // Times of day from midnight
+}
+
+func (as *atTimes) setAtTimes(tods []time.Duration) {
+	as.tods = tods
 }
 
 func newAtTimes(tods []time.Duration) atTimes {
