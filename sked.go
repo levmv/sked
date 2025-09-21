@@ -132,15 +132,20 @@ func (sh *Scheduler) jobWorker(j *Job) {
 	for {
 		select {
 		case <-t.C:
-			if time.Since(next) < staleThreshold && !j.shouldSkip(next) {
-				doJob(sh.ctx, sh.logger, j)
-			} else {
+			if time.Since(next) >= staleThreshold {
 				sh.logger.Debug("stale timer fired; job execution skipped",
 					"name", j.name,
 					"scheduled_for", next,
 					"woke_at", time.Now().In(sh.location),
+				)	
+			} else if j.shouldSkip(next) {
+				sh.logger.Debug("job execution skipped",
+					"name", j.name,
+					"scheduled_for", next,
 				)
-			}
+			} else {
+				doJob(sh.ctx, sh.logger, j)
+			} 
 			if !hasNext {
 				sh.logger.Debug("one-off job finished", "name", j.name)
 				return
