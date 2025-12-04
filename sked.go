@@ -622,7 +622,7 @@ func (s *MonthlySchedule) Next(t time.Time, loc *time.Location) (time.Time, bool
 		}
 	}
 	nextMonthBase := time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, loc)
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 48; i++ {
 		targetNextMonth := getTargetDateInMonth(nextMonthBase.Year(), nextMonthBase.Month())
 
 		if !targetNextMonth.IsZero() {
