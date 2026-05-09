@@ -2,6 +2,7 @@ package sked
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 )
@@ -122,5 +123,37 @@ func TestScheduler_At_TimeParsing(t *testing.T) {
 				t.Errorf("did not expect a configuration error, but got: %v", err)
 			}
 		})
+	}
+}
+
+func TestScheduler_At_NormalizesTimesAfterSchedule(t *testing.T) {
+	t.Parallel()
+
+	scheduler, cancel := newTestScheduler(t)
+	defer cancel()
+
+	job := scheduler.Schedule(func(ctx context.Context) {}).
+		Daily().
+		At("18:00", "09:00", "09:00")
+
+	if job.err != nil {
+		t.Fatalf("unexpected configuration error: %v", job.err)
+	}
+
+	daily, ok := job.schedule.(*DailySchedule)
+	if !ok {
+		t.Fatalf("expected *DailySchedule, got %T", job.schedule)
+	}
+	if got, want := daily.tods, []time.Duration{9 * time.Hour, 18 * time.Hour}; !slices.Equal(got, want) {
+		t.Fatalf("At() did not sort and deduplicate times after schedule creation: got %v, want %v", got, want)
+	}
+
+	loc := time.UTC
+	after := mustTime(t, "2006-01-02 15:04:05", "2024-01-01 08:00:00", loc)
+	want := mustTime(t, "2006-01-02 15:04:05", "2024-01-01 09:00:00", loc)
+
+	got, ok := job.schedule.Next(after, loc)
+	if !ok || !got.Equal(want) {
+		t.Fatalf("Next() picked the wrong time: got %v, want %v", got, want)
 	}
 }

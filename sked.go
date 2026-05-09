@@ -137,7 +137,7 @@ func (sh *Scheduler) jobWorker(j *Job) {
 					"name", j.name,
 					"scheduled_for", next,
 					"woke_at", time.Now().In(sh.location),
-				)	
+				)
 			} else if j.shouldSkip(next) {
 				sh.logger.Debug("job execution skipped",
 					"name", j.name,
@@ -145,7 +145,7 @@ func (sh *Scheduler) jobWorker(j *Job) {
 				)
 			} else {
 				doJob(sh.ctx, sh.logger, j)
-			} 
+			}
 			if !hasNext {
 				sh.logger.Debug("one-off job finished", "name", j.name)
 				return
@@ -499,10 +499,14 @@ type atTimes struct {
 }
 
 func (as *atTimes) setAtTimes(tods []time.Duration) {
-	as.tods = tods
+	as.tods = normalizeAtTimes(tods)
 }
 
 func newAtTimes(tods []time.Duration) atTimes {
+	return atTimes{tods: normalizeAtTimes(tods)}
+}
+
+func normalizeAtTimes(tods []time.Duration) []time.Duration {
 	var todsCopy []time.Duration
 
 	if len(tods) == 0 {
@@ -516,7 +520,7 @@ func newAtTimes(tods []time.Duration) atTimes {
 	slices.Sort(todsCopy)
 	todsCopy = slices.Compact(todsCopy)
 
-	return atTimes{tods: todsCopy}
+	return todsCopy
 }
 
 // findNextTime finds the first scheduled time that occurs on the same day as
